@@ -41,16 +41,14 @@ def check_policy(tool_name, arguments):
 # =========================
 
 def detect_intent(message):
-
     if "搜索" in message or "查" in message:
         return "search"
-
     elif "计算" in message:
         return "calculator"
-
     elif "删除" in message:
         return "delete_file"
-
+    elif "读取" in message or "查看" in message:
+        return "read_file"
     else:
         return "unknown"
 
@@ -60,15 +58,13 @@ def detect_intent(message):
 # =========================
 
 def extract_file_name(message):
-
-    # 例如：
-    # 删除 important.txt
-    #
-    # ↓
-    #
-    # important.txt
-
-    return message.replace("删除", "").strip()
+    return (
+        message
+        .replace("删除", "")
+        .replace("读取", "")
+        .replace("查看", "")
+        .strip()
+    )
 
 
 # =========================
@@ -207,35 +203,30 @@ def chat(data: UserMessage):
     # =========================
 
     if intent == "search":
-
         arguments = {
             "query": user_message
         }
-
-
     elif intent == "calculator":
-
         arguments = {
             "a": data.a,
             "b": data.b
         }
-
-
     elif intent == "delete_file":
-
         file_name = extract_file_name(user_message)
 
         arguments = {
             "file_name": file_name
         }
+    elif intent == "read_file":
+        file_name = extract_file_name(user_message)
 
-
+        arguments = {
+            "file_name": file_name
+        }
     else:
-
         return {
             "reply": "暂不支持这个工具。"
         }
-
 
     # =========================
     # 4. 进入 Security Gateway

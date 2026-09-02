@@ -1,3 +1,4 @@
+from pathlib import Path
 from pydantic import BaseModel
 
 
@@ -7,6 +8,10 @@ class CalculatorArgs(BaseModel):
 
 
 class DeleteFileArgs(BaseModel):
+    file_name: str
+
+
+class ReadFileArgs(BaseModel):
     file_name: str
 
 
@@ -20,6 +25,13 @@ def calculator(a, b):
 
 def delete_file(file_name):
     return f"已删除文件：{file_name}"
+
+
+def read_file(file_name):
+    path = Path("data") / file_name
+
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 TOOLS = {
@@ -38,5 +50,11 @@ TOOLS = {
         "function": delete_file,
         "schema": DeleteFileArgs,
         "permission": "file.delete"
+    },
+
+    "read_file": {
+        "function": read_file,
+        "schema": ReadFileArgs,
+        "permission": "file.read"
     }
 }
