@@ -24,6 +24,13 @@ def calculator(a, b):
 
 
 def delete_file(file_name):
+    path = Path("data") / file_name
+
+    if not path.exists():
+        return f"文件不存在：{file_name}"
+
+    path.unlink()
+
     return f"已删除文件：{file_name}"
 
 

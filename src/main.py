@@ -5,6 +5,7 @@ from pathlib import Path
 from src.security.authentication import authenticate
 from src.security.authorization import check_agent_permission
 from src.security.decision import SecurityDecision
+from src.security.policy import check_policy
 from src.tools.registry import TOOLS
 from src.tools.executor import execute_tool
 from src.audit.logger import log_event
@@ -18,23 +19,6 @@ class UserMessage(BaseModel):
     a: int
     b: int
     api_key: str 
-
-
-def check_policy(tool_name, arguments):
-
-    if tool_name == "delete_file":
-
-        file_name = arguments["file_name"]
-
-        base_dir = Path("data").resolve()
-        target = (base_dir / file_name).resolve()
-
-        # 防止访问 data 目录之外的文件
-        if not target.is_relative_to(base_dir):
-            return False
-
-    return True
-
 
 # =========================
 # 10. 意图识别
@@ -127,14 +111,13 @@ def security_check(tool_name, arguments, agent_id):
 
         arguments = validated_args.model_dump()
 
-    # 第四关：Policy
-    if not check_policy(tool_name, arguments):
+    # 第四关：Resource Policy
+    decision = check_policy(
+        tool_name,
+        arguments
+    )
 
-        decision = SecurityDecision(
-            allowed=False,
-            error_code="POLICY_DENIED",
-            reason="操作不符合安全策略"
-        )
+    if not decision.allowed:
 
         log_event(
             agent_id,

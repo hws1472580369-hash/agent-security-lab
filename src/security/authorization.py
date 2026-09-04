@@ -1,46 +1,71 @@
-from src.security.authentication import AGENTS
+from src.database.database import get_connection
 from src.security.decision import SecurityDecision
 
+def get_role_permissions(role):
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT permissions.name
+
+        FROM roles
+
+        JOIN role_permissions
+        ON roles.id = role_permissions.role_id
+
+        JOIN permissions
+        ON permissions.id = role_permissions.permission_id
+
+        WHERE roles.name = ?
+        """,
+        (role,)
+    )
+
+    permissions = [
+        row[0]
+        for row in cursor.fetchall()
+    ]
+
+    conn.close()
+
+    return permissions
 
 def check_agent_permission(tool_name, agent_id, TOOLS):
 
-    # 1. 找 Agent
-    agent = AGENTS.get(agent_id)
+    # 1. 从数据库查 Agent
+    conn = get_connection()
+    cursor = conn.cursor()
 
-    if agent is None:
+    cursor.execute(
+        """
+        SELECT role
+        FROM agents
+        WHERE agent_name = ?
+        AND status = 'active'
+        """,
+        (agent_id,)
+    )
+
+    result = cursor.fetchone()
+
+    conn.close()
+
+    # 2. Agent 不存在
+    if result is None:
         return SecurityDecision(
             allowed=False,
             error_code="AGENT_NOT_FOUND",
-            reason="Agent 不存在"
+            reason="Agent 不存在或未激活"
         )
 
-    # 2. 找 Role
-    role = agent["role"]
+    # 3. 获取 Role
+    role = result[0]
 
-    # 3. 找 Role 的权限
-    permissions = {
-        "normal_agent": [
-            "search.use",
-            "calculator.use"
-        ],
+    permissions = get_role_permissions(role)
 
-        "file_agent": [
-            "search.use",
-            "calculator.use",
-            "file.read",
-            "file.delete"
-        ],
-
-        "admin": [
-            "search.use",
-            "calculator.use",
-            "file.read",
-            "file.write",
-            "file.delete"
-        ]
-    }.get(role, [])
-
-    # 4. 找 Tool
+    # 5. 找 Tool
     tool = TOOLS.get(tool_name)
 
     if tool is None:
@@ -50,10 +75,10 @@ def check_agent_permission(tool_name, agent_id, TOOLS):
             reason=f"Tool {tool_name} 不存在"
         )
 
-    # 5. Tool 要求的权限
+    # 6. Tool 要求的权限
     required_permission = tool.get("permission")
 
-    # 6. 检查权限
+    # 7. 检查权限
     if required_permission not in permissions:
         return SecurityDecision(
             allowed=False,
@@ -64,8 +89,9 @@ def check_agent_permission(tool_name, agent_id, TOOLS):
             )
         )
 
-    # 7. 权限通过
+    # 8. 权限通过
     return SecurityDecision(
         allowed=True,
         reason="权限检查通过"
     )
+
