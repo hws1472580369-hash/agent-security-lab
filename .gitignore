@@ -8,6 +8,7 @@ venv/
 
 # Runtime logs
 data/*.log
+data/*.db
 
 # Environment variables / secrets
 .env

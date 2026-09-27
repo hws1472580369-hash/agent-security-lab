@@ -1,298 +1,168 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+
+from src.agent.llm_agent import LLMAgent
+from src.agent.agent_loop import AgentLoop
 from src.security.engine import SecurityEngine
 from src.tools.executor import execute_tool
-from src.models.request import SecurityRequest
 from src.security.approval_repository import (
     list_pending_approvals,
     get_approval_request,
     update_approval_status,
-    save_approval_result
+    save_approval_result,
 )
+from src.security.authentication import authenticate
+from src.security.authorization import get_agent_role
+from src.audit.logger import log_event
+
 app = FastAPI()
 
+def _require_admin(api_key: str | None) -> str:
+    """验证请求者是不是管理员。返回 agent_id 或抛 HTTPException。"""
+    
+    # ① 没带 Key → 401
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="缺少 API Key")
+    
+    # ② Key 无效 → 401
+    agent = authenticate(api_key)
+    if agent is None:
+        raise HTTPException(status_code=401, detail="无效的 API Key")
+    
+    # ③ 不是管理员 → 记审计 + 403
+    if get_agent_role(agent) != "admin":
+        log_event(
+            agent, "approval_access", {},
+            allowed=False,
+            reason="越权访问审批接口",
+            error_code="FORBIDDEN",
+            status="DENIED",
+        )
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    
+    # ④ 都通过 → 返回 agent_id
+    return agent
 
-# Security Gateway
 security_engine = SecurityEngine()
+llm_agent = LLMAgent()
+agent_loop = AgentLoop(llm_agent, security_engine)
 
-
-# =========================
-# 用户请求数据结构
-# =========================
 
 class UserMessage(BaseModel):
-
     message: str
-
-    a: int
-
-    b: int
-
     api_key: str
 
+
 class ApprovalAction(BaseModel):
-    reviewer: str                    # 审批人，比如 "admin_001"
-    action: str                      # "APPROVED" 或 "REJECTED"
-    reject_reason: str | None = None # 拒绝理由（只有拒绝时才填）
+    action: str
+    reject_reason: str | None = None
 
-
-# =========================
-# 模拟 Agent 意图识别
-# =========================
-
-def detect_intent(message):
-
-    if "搜索" in message or "查" in message:
-
-        return "search"
-
-
-    elif "计算" in message:
-
-        return "calculator"
-
-
-    elif "删除" in message:
-
-        return "delete_file"
-
-
-    elif "读取" in message or "查看" in message:
-
-        return "read_file"
-
-
-    else:
-        
-
-        return "unknown"
-
-
-
-# =========================
-# 模拟 Agent 参数生成
-# =========================
-
-def extract_file_name(message):
-
-    return (
-        message
-        .replace("删除", "")
-        .replace("读取", "")
-        .replace("查看", "")
-        .strip()
-    )
-
-
-
-# =========================
-# Chat API
-# =========================
 
 @app.post("/chat")
 def chat(data: UserMessage):
+    return agent_loop.run(data.message, data.api_key)
 
-
-    user_message = data.message
-
-    api_key = data.api_key
-
-
-
-    # =========================
-    # 1. Agent Layer
-    # 生成 Tool Request
-    # =========================
-
-    tool_name = detect_intent(
-        user_message
-    )
-
-    # =========================
-    # 3. 构造 arguments
-    # =========================
-
-    if tool_name == "search":
-
-
-        arguments = {
-
-            "query": user_message
-
-        }
-
-
-
-    elif tool_name == "calculator":
-
-
-        arguments = {
-
-            "a": data.a,
-
-            "b": data.b
-
-        }
-
-
-
-    elif tool_name == "delete_file":
-
-
-        file_name = extract_file_name(
-            user_message
-        )
-
-
-        arguments = {
-
-            "file_name": file_name
-
-        }
-
-
-
-    elif tool_name == "read_file":
-
-
-        file_name = extract_file_name(
-            user_message
-        )
-
-
-        arguments = {
-
-            "file_name": file_name
-
-        }
-
-
-
-    else:
-
-
-        return {
-
-            "reply": "暂不支持这个工具。"
-
-        }
-
-
-
-    # =========================
-    # 4. Security Gateway
-    # =========================
-
-    request = SecurityRequest(
-        api_key=api_key,
-        tool=tool_name,
-        arguments=arguments,
-    )
-
-    decision = security_engine.evaluate(request)
-
-    # =========================
-    # 5. 安全拒绝
-    # =========================
-    if not decision.allowed:
-        response = {
-            "reply": decision.reason,
-            "error_code": decision.error_code,
-        }
-        if decision.status == "PENDING":
-            response["status"] = "PENDING"
-            response["approval_id"] = decision.approval_id
-        return response
-
-    # =========================
-    # 6. 执行 Tool
-    # =========================
-    result = execute_tool(
-        tool_name,
-        decision.arguments,
-    )
-
-    # =========================
-    # 7. 返回结果
-    # =========================
-    return {
-        "reply": str(result),
-    }
 
 @app.get("/approvals")
-def list_approvals():
+def list_approvals(x_api_key: str | None = Header(default=None)):
+    _require_admin(x_api_key)
     return {"pending": list_pending_approvals()}
 
-@app.post("/approve/{approval_id}")
-def approve_request(approval_id: int, action_data:ApprovalAction):
-    request_info = get_approval_request(approval_id)
 
+@app.post("/approve/{approval_id}")
+def approve_request(
+    approval_id: int,
+    action_data: ApprovalAction,
+    x_api_key: str | None = Header(default=None),
+):
+    agent = _require_admin(x_api_key)
+
+    if action_data.action not in ("APPROVED", "REJECTED"):
+        raise HTTPException(
+            status_code=422,
+            detail="action 必须是 APPROVED 或 REJECTED"
+        )
+
+    request_info = get_approval_request(approval_id)
     if request_info is None:
-        return {
-            "status": "error",
-            "message": f"审批请求{approval_id}不存在"
-				}
+        raise HTTPException(status_code=404, detail="审批请求不存在")
+
     update_approval_status(
         approval_id=approval_id,
         status=action_data.action,
-        reviewer=action_data.reviewer,
-        reject_reason=action_data.reject_reason          
-		)
-    return{
-        "status":"success",
-        "message":f"审批请求{approval_id}已{action_data.action}",
-        "reviewer":action_data.reviewer
-		}
+        reviewer=agent,
+        reject_reason=action_data.reject_reason,
+    )
+
+    return {
+        "status": "success",
+        "message": f"审批请求{approval_id}已{action_data.action}",
+        "reviewer": agent,
+    }
 
 @app.get("/result/{approval_id}")
-def get_result(approval_id: int):
+def get_result(
+    approval_id: int,
+    x_api_key: str | None = Header(default=None),
+):
+    # ① 没带 Key → 401
+    if x_api_key is None:
+        raise HTTPException(status_code=401, detail="缺少 API Key")
 
+    # ② Key 无效 → 401
+    agent = authenticate(x_api_key)
+    if agent is None:
+        raise HTTPException(status_code=401, detail="无效的 API Key")
+
+    # ③ 记录不存在 → 404
     request_info = get_approval_request(approval_id)
-
     if request_info is None:
-        return {
-            "status": "error",
-            "message": f"审批请求 {approval_id} 不存在"
-        }
+        raise HTTPException(status_code=404, detail="审批请求不存在")
 
-    # 情况 1：还在等审批
+    # ④ 不是本人也不是 admin → 403 + 记审计
+    if agent != request_info["agent_id"] and get_agent_role(agent) != "admin":
+        log_event(
+            agent, "result_access",
+            {"approval_id": approval_id},
+            allowed=False,
+            reason="越权查看他人审批",
+            error_code="FORBIDDEN",
+            status="DENIED",
+        )
+        raise HTTPException(status_code=403, detail="无权查看此审批")
+
+    # ⑤ 原有逻辑不变
     if request_info["status"] == "PENDING":
         return {
             "status": "PENDING",
             "message": "审批还在进行中，请等待管理员处理"
         }
 
-    # 情况 2：被拒绝
     if request_info["status"] == "REJECTED":
         return {
             "status": "REJECTED",
             "message": "审批被拒绝",
             "reject_reason": request_info["reject_reason"],
-            "reviewer": request_info["reviewer"]
+            "reviewer": request_info["reviewer"],
         }
 
-        # 情况 3：已批准
     if request_info["status"] == "APPROVED":
-
-        # 3.1 如果之前已经执行过，直接返回缓存结果
         if request_info["result"] is not None:
             return {
                 "status": "APPROVED",
                 "message": "审批通过，工具已执行（缓存结果）",
-                "result": request_info["result"]
+                "result": request_info["result"],
             }
 
-        # 3.2 第一次执行，执行工具并保存结果
         result = execute_tool(
             request_info["tool_name"],
-            request_info["arguments"]
+            request_info["arguments"],
         )
         result_str = str(result)
-
         save_approval_result(approval_id, result_str)
 
         return {
             "status": "APPROVED",
             "message": "审批通过，工具已执行",
-            "result": result_str
+            "result": result_str,
         }

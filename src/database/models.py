@@ -106,24 +106,6 @@ def create_resource_policy_table():
     print("资源策略表创建完成")
 
 
-def create_risk_policy_table():
-    print("开始检查风险策略表")
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS risk_policies(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action TEXT NOT NULL,
-            resource_level TEXT NOT NULL,
-            risk_level TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-    print("风险策略表创建/检查完成")
-
 def create_tools_table():
     print("开始创建 tools 表")
     conn = get_connection()
@@ -137,7 +119,6 @@ def create_tools_table():
             permission TEXT NOT NULL,
             action TEXT NOT NULL,
             resource_key TEXT,
-            risk_level TEXT NOT NULL,
             schema_json TEXT,
             enabled INTEGER DEFAULT 1
         )
@@ -161,7 +142,9 @@ def create_audit_logs_table():
             arguments TEXT,
             allowed INTEGER NOT NULL,
             reason TEXT,
-            error_code TEXT
+            error_code TEXT,
+            risk_score INTEGER,
+            trigger_message TEXT
         )
         """
     )
@@ -255,8 +238,38 @@ def add_status_column_to_audit_logs():
     conn.commit()
     conn.close()		
 
-    
-    
+def add_audit_logs_new_columns():
+    print("检查 audit_logs 的新字段")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("PRAGMA table_info(audit_logs)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "risk_score" not in columns:
+        cursor.execute(
+            """
+            ALTER TABLE audit_logs
+            ADD COLUMN risk_score INTEGER
+            """
+        )
+        print("已添加 risk_score 字段")
+    else:
+        print("risk_score 字段已存在")
+
+    if "trigger_message" not in columns:
+        cursor.execute(
+            """
+            ALTER TABLE audit_logs
+            ADD COLUMN trigger_message TEXT
+            """
+        )
+        print("已添加 trigger_message 字段")
+    else:
+        print("trigger_message 字段已存在")
+
+    conn.commit()
+    conn.close()
     				
 def clean_resources():
     print("清理重复资源")
@@ -275,26 +288,6 @@ def clean_resources():
     conn.commit()
     conn.close()
     print("重复资源清理完成")
-
-
-def clean_risk_policies():
-    """只清理 risk_policies 的重复行，其他表完全不动"""
-    print("清理重复风险策略")
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        DELETE FROM risk_policies
-        WHERE id NOT IN (
-            SELECT MIN(id)
-            FROM risk_policies
-            GROUP BY action, resource_level
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-    print("重复风险策略清理完成")
 
 
 def create_resource_unique_index():
@@ -317,8 +310,8 @@ def insert_resources():
     cursor = conn.cursor()
     resources = [
         ("public.txt", "file", "PUBLIC"),
-        ("sensitive.txt", "file", "SENSITIVE"),
-        ("secret.txt", "file", "SECRET"),
+        ("customer_records.txt", "file", "SENSITIVE"),
+        ("internal_notes.txt", "file", "SECRET"),
         ("test_risk.txt", "file", "SENSITIVE"),
         ("test_timewindow.txt", "file", "SENSITIVE")
     ]
@@ -423,10 +416,10 @@ def insert_resource_policies():
     policies = [
         ("public.txt", "read", 1),
         ("public.txt", "delete", 1),
-        ("sensitive.txt", "read", 1),
-        ("sensitive.txt", "delete", 0),
-        ("secret.txt", "read", 0),
-        ("secret.txt", "delete", 0),
+        ("customer_records.txt", "read", 1),
+        ("customer_records.txt", "delete", 0),
+        ("internal_notes.txt", "read", 0),
+        ("internal_notes.txt", "delete", 0),
         ("test_risk.txt", "read", 1),
         ("test_risk.txt", "delete", 1),
         ("test_timewindow.txt", "read", 1),
@@ -453,32 +446,6 @@ def insert_resource_policies():
     conn.close()
 
 
-def insert_risk_policies():
-    print("开始初始化风险策略")
-    conn = get_connection()
-    cursor = conn.cursor()
-    policies = [
-        ("read", "PUBLIC", "LOW"),
-        ("read", "SENSITIVE", "MEDIUM"),
-        ("read", "SECRET", "HIGH"),
-        ("delete", "PUBLIC", "MEDIUM"),
-        ("delete", "SENSITIVE", "HIGH"),
-        ("delete", "SECRET", "HIGH"),
-        ("calculator", "NONE", "LOW"),
-        ("search", "NONE", "LOW")
-    ]
-    cursor.executemany(
-        """
-        INSERT OR IGNORE INTO risk_policies
-        (action, resource_level, risk_level)
-        VALUES (?, ?, ?)
-        """,
-        policies
-    )
-    conn.commit()
-    conn.close()
-    print("风险策略初始化完成")
-
 def insert_tools():
     print("开始初始化工具数据")
     import json
@@ -492,7 +459,6 @@ def insert_tools():
             "search.use", 
             "search", 
             None, 
-            "LOW", 
             json.dumps({
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
@@ -505,7 +471,6 @@ def insert_tools():
             "calculator.use", 
             "execute", 
             None, 
-            "LOW", 
             json.dumps({
                 "type": "object",
                 "properties": {
@@ -521,7 +486,6 @@ def insert_tools():
             "file.read", 
             "read", 
             "file_name", 
-            "MEDIUM", 
             json.dumps({
                 "type": "object",
                 "properties": {"file_name": {"type": "string"}},
@@ -534,7 +498,6 @@ def insert_tools():
             "file.delete", 
             "delete", 
             "file_name", 
-            "HIGH", 
             json.dumps({
                 "type": "object",
                 "properties": {"file_name": {"type": "string"}},
@@ -546,8 +509,8 @@ def insert_tools():
     cursor.executemany(
         """
         INSERT OR IGNORE INTO tools
-        (name, description, permission, action, resource_key, risk_level, schema_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (name, description, permission, action, resource_key, schema_json)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         tools_data
     )
@@ -625,7 +588,7 @@ def update_resource_policy_conditions():
         WHERE resource_id = (SELECT id FROM resources WHERE name = ?)
           AND action = ?
         """,
-        ('{"role": "file_agent"}', 'sensitive.txt', 'read')
+        ('{"role": "file_agent"}', 'customer_records.txt', 'read')
     )
 
     conn.commit()
@@ -655,20 +618,21 @@ def update_timewindow_condition():
     print("时间窗条件设置完成")    
     		  
 
-if __name__ == "__main__":
+def init_db():
+    """初始化数据库：建表 + 灌初始数据。可重复调用。"""
     create_tables()
     create_agent_table()
     create_role_tables()
     create_tools_table()
     create_resource_policy_table()
-    create_risk_policy_table()
     create_audit_logs_table()
     create_approval_requests_table()
     create_risk_factors_table()
     add_result_column_to_approval_requests()
     add_condition_column_to_resource_policies()
     add_status_column_to_audit_logs()
-    
+    add_audit_logs_new_columns()   # ← 新增
+
     clean_resources()
     create_resource_unique_index()
 
@@ -677,29 +641,13 @@ if __name__ == "__main__":
     insert_roles_and_permissions()
     insert_role_permissions()
     insert_resource_policies()
-    insert_tools()    
+    insert_tools()
     insert_risk_factors()
-    update_resource_policy_conditions()   # 更新数据的
+    update_resource_policy_conditions()
     update_timewindow_condition()
-    
-
-    # 只清理 risk_policies 的重复行
-    clean_risk_policies()
-
-    # 清理完之后再加唯一索引，防止以后再重复
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS
-        idx_risk_policies_action_level
-        ON risk_policies(action, resource_level)
-        """
-    )
-    conn.commit()
-    conn.close()
-
-    # 最后确保这 8 条存在
-    insert_risk_policies()
 
     print("数据库初始化完成")
+
+
+if __name__ == "__main__":
+    init_db()

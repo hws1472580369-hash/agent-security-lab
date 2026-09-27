@@ -3,7 +3,7 @@ from src.database.database import get_connection
 
 
 RATE_WINDOW_MINUTES = 1
-RATE_MAX_REQUESTS = 10
+RATE_MAX_REQUESTS = 50
 
 def check_rate_limit(agent_id: str) -> bool:
     """

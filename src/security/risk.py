@@ -117,15 +117,3 @@ def get_factor_score(factor_type: str, factor_value: str) -> int:
         return 0
 
     return row[0]
-
-
-def score_to_risk_level(score: int) -> str:
-    """
-    把总分映射为风险等级。
-    """
-    if score < 30:
-        return "LOW"
-    elif score < 50:
-        return "MEDIUM"
-    else:
-        return "HIGH"

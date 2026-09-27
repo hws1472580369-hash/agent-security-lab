@@ -7,7 +7,7 @@ def get_tool(name: str):
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT name, permission, action, resource_key, risk_level, schema_json, enabled
+        SELECT name, permission, action, resource_key, schema_json, enabled
         FROM tools
         WHERE name = ?
         """,
@@ -24,7 +24,33 @@ def get_tool(name: str):
         "permission": row[1],
         "action": row[2],
         "resource_key": row[3],
-        "risk_level": row[4],
-        "schema": json.loads(row[5]) if row[5] else None,
-        "enabled": bool(row[6])
+        "schema": json.loads(row[4]) if row[4] else None,
+        "enabled": bool(row[5])
     }
+
+
+def list_enabled_tools():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT name, description, permission, action, resource_key, schema_json, enabled
+        FROM tools
+        WHERE enabled = 1
+        """
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    tools = []
+    for row in rows:
+        tools.append({
+            "name": row[0],
+            "description": row[1],
+            "permission": row[2],
+            "action": row[3],
+            "resource_key": row[4],
+            "schema": json.loads(row[5]) if row[5] else None,
+            "enabled": bool(row[6]),
+        })
+    return tools

@@ -91,11 +91,13 @@ class SecurityEngine:
                 False,
                 decision.reason,
                 error_code=decision.error_code,
-                status=decision.status
+                status=decision.status,
+                trigger_message=request.trigger_message,
             )
 
             return decision
 
+				
 		    # =========================
         # 1.5 Rate Limit Check
         # =========================
@@ -116,7 +118,8 @@ class SecurityEngine:
                 False,
                 decision.reason,
                 error_code=decision.error_code,
-                status=decision.status
+                status=decision.status,
+                trigger_message=request.trigger_message,
             )
 
             return decision
@@ -142,7 +145,8 @@ class SecurityEngine:
                 False,
                 decision.reason,
                 error_code=decision.error_code,
-                status=decision.status
+                status=decision.status,
+                trigger_message=request.trigger_message,
             )
 
             return decision
@@ -165,7 +169,8 @@ class SecurityEngine:
                 False,
                 decision.reason,
                 error_code=decision.error_code,
-                status=decision.status
+                status=decision.status,
+                trigger_message=request.trigger_message,
             )
 
             return decision
@@ -201,7 +206,8 @@ class SecurityEngine:
                     False,
                     decision.reason,
                     error_code=decision.error_code,
-                    status=decision.status
+                    status=decision.status,
+                    trigger_message=request.trigger_message,
                 )
 
                 return decision
@@ -274,7 +280,9 @@ class SecurityEngine:
             decision.allowed,
             decision.reason,
             error_code=decision.error_code,
-            status=decision.status
+            status=decision.status,
+            trigger_message=request.trigger_message,
+            risk_score=decision.risk_score
         )
 
         return decision

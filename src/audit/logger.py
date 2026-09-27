@@ -3,7 +3,9 @@ from datetime import datetime
 from src.database.database import get_connection
 
 
-def log_event(agent_id, tool_name, arguments, allowed, reason, error_code=None, status="ALLOWED"):
+def log_event(agent_id, tool_name, arguments, allowed, reason, 
+              error_code=None, status="ALLOWED", 
+              risk_score=None, trigger_message=None):
     timestamp = datetime.now().isoformat()
 
     conn = get_connection()
@@ -12,8 +14,8 @@ def log_event(agent_id, tool_name, arguments, allowed, reason, error_code=None, 
     cursor.execute(
         """
         INSERT INTO audit_logs
-        (timestamp, agent_id, tool_name, arguments, allowed, reason, error_code, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (timestamp, agent_id, tool_name, arguments, allowed, reason, error_code, status, risk_score, trigger_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             timestamp,
@@ -24,6 +26,8 @@ def log_event(agent_id, tool_name, arguments, allowed, reason, error_code=None, 
             reason,
             error_code,
             status,
+            risk_score,
+            trigger_message[:500] if trigger_message else None,
         )
     )
 

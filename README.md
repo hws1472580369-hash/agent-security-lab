@@ -37,13 +37,19 @@ Audit Log
 pip install -r requirements.txt
 python -m src.database.models   # 初始化数据库
 uvicorn src.main:app --reload
+```
 
 ## 测试请求
+```bash
 curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "读取 public.txt", "a": 0, "b": 0, "api_key": "key_agent_002"}'
+  -d '{"message": "读取 public.txt", "api_key": "key_agent_002"}'
+```
 
 src/
+├── agent/          LLM 层
+│   ├── llm_agent.py       LLM 接入（DeepSeek）
+│   └── agent_loop.py      多轮工具调用循环
 ├── security/       安全检查核心
 │   ├── engine.py          安全流水线调度
 │   ├── authentication.py  身份认证
@@ -66,15 +72,14 @@ src/
 ☑ Phase 1：基础安全网关
 ☑ Phase 2：SQLite + RBAC + Resource Policy + Real Tool
 ☑ Phase 2.5：Tool Metadata 入库
-☑ Phase 3 第 1 步：审计日志结构化
-□ Phase 3 第 2 步：真正的审批流（进行中）
-□ Phase 3 第 3 步：风险评分引擎
+☑ Phase 3：Security Engine 完善（审批流 / 风险评分 / 条件策略 / 动态规则 / 纵深防御）
+☑ Phase 4：LLM 接入 + Prompt 注入红队测试
 详细报告见 reports/。
 
 文档索引
-Phase 1 & 2 阶段总结
-
-Phase 2.5 报告
-
-资源策略测试
+- [Phase 1 & 2 阶段总结](reports/phase1_phase2_report.md)
+- [Phase 2.5 报告](reports/Phase2.5_Report.md)
+- [资源策略测试](reports/resource_policy_test.md)
+- [Phase 3 报告](reports/phase3_report.md)
+- [Phase 4 报告](reports/phase4_report.md)
 

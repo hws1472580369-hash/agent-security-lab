@@ -17,7 +17,7 @@ class SecurityDecision(BaseModel):
     
     approval_id: int | None = None
 
-    
+    risk_score: int | None = None
 def make_decision(policy_result, risk_score):
     """
     综合硬边界判断（policy_result）和风险分数（risk_score），
@@ -35,7 +35,8 @@ def make_decision(policy_result, risk_score):
             allowed=False,
             status="DENIED",
             error_code=policy_result["error_code"],
-            reason=policy_result["reason"]
+            reason=policy_result["reason"],
+            risk_score=risk_score,
         )
 
     # 2. 硬边界通过，看风险分
@@ -45,7 +46,8 @@ def make_decision(policy_result, risk_score):
             allowed=False,
             status="DENIED",
             error_code="HIGH_RISK",
-            reason="风险等级过高，拒绝执行"
+            reason="风险等级过高，拒绝执行",
+            risk_score=risk_score,
         )
 
     elif risk_score >= 30:
@@ -53,7 +55,8 @@ def make_decision(policy_result, risk_score):
             decision="REQUIRE_APPROVAL",
             allowed=False,
             status="PENDING",
-            reason="风险等级中等，需要人工审批"
+            reason="风险等级中等，需要人工审批",
+            risk_score=risk_score,
         )
 
     else:
@@ -61,7 +64,8 @@ def make_decision(policy_result, risk_score):
             decision="ALLOW",
             allowed=True,
             status="ALLOWED",
-            reason="风险等级较低，允许执行"
+            reason="风险等级较低，允许执行",
+            risk_score=risk_score,
         )
 if __name__ == "__main__":
 
