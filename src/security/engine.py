@@ -67,12 +67,14 @@ class SecurityEngine:
 
         tool_name = request.tool
         arguments = request.arguments
-        api_key = request.api_key
 
         # =========================
         # 1. Authentication
         # =========================
-        agent_id = authenticate(api_key)
+        if request.agent_id is not None:
+            agent_id = request.agent_id
+        else:
+            agent_id = authenticate(request.api_key)
 
         if agent_id is None:
 
