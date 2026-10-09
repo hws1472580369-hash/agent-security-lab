@@ -1,0 +1,31 @@
+services:
+  gateway:
+    build: .
+    image: agent-security-gateway:phase5
+    container_name: agent-security-gateway
+    restart: unless-stopped
+
+    # 只把端口映射到虚拟机自己的回环地址，不对局域网暴露
+    ports:
+      - "127.0.0.1:8001:8001"
+
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8001"
+      SECURITY_DB_PATH: /app/data/security.db
+
+    # 审计日志和数据库放在命名卷里，容器重建也不丢
+    volumes:
+      - gateway-data:/app/data
+
+    # 收掉一切不需要的特权，缩小攻击面
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  gateway-data:

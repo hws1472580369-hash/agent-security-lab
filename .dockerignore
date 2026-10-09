@@ -1,0 +1,17 @@
+# 不要把本机的东西打进镜像
+.git/
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# 本机密钥与运行时数据库（容器里自己重新生成）
+.env
+data/*.db
+
+# 开发/文档类内容，网关运行不需要
+tests/
+reports/
+docs/
+scripts/
+.cursor/
