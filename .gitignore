@@ -13,9 +13,23 @@ data/*.db
 # Environment variables / secrets
 .env
 
+# Cursor 本地 MCP 配置（可能包含本地钥匙）
+.cursor/mcp.json
+
 # VS Code
 .vscode/
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# 个人笔记（不公开：写作规划、求职、面试复习、内部反思）
+docs/论文骨架.md
+docs/求职准备计划.md
+docs/吃透项目清单.md
+docs/phase5_gaps_memo.md
+docs/阶段一_传统安全.md
+
+# 假合规系统的临时输出（capture.log 作为外联实验证据保留）
+logs/server.out
+logs/server.err
